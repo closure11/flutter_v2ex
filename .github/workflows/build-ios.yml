@@ -1,0 +1,62 @@
+name: build_ipa
+
+on:
+  workflow_dispatch:
+    inputs:
+      description:
+        description: "build description"
+        required: false
+        default: "Trigger iOS build"
+
+jobs:
+  build-ios:
+    name: "build iOS IPA"
+    runs-on: macos-latest
+    permissions: write-all
+
+    env:
+      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      FLUTTER_STORAGE_BASE_URL: https://storage.flutter-io.cn
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "current version: $VERSION"
+
+      - name: Set Flutter environment
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          flutter-version-file: pubspec.yaml
+
+      - name: Get Flutter dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build iOS (no signing)
+        run: flutter build ios --release --no-codesign
+
+      - name: Create IPA file
+        run: |
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -q -r flutter_v2ex_v${{ env.VERSION }}_ios_unsigned.ipa Payload
+          rm -rf Payload
+
+      - name: Upload IPA file
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: flutter_v2ex_*.ipa
+          retention-days: 90
+
+      - name: Build completed
+        run: |
+          echo "✅ iOS IPA build completed!"
+          echo "📦 file name: flutter_v2ex_v${{ env.VERSION }}_ios_unsigned.ipa"
+          echo "⚠️  note: this is an unsigned IPA file, you need to sign it yourself before installing"
